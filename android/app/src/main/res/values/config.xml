@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Change this to your deployed backend, e.g. https://fire-arena-max-api.fly.dev/ -->
+    <string name="api_base_url" translatable="false">https://fire-arena-max-api.fly.dev/</string>
+    <string name="razorpay_key_id" translatable="false">rzp_test_xxxxxxxx</string>
+</resources>

@@ -1,0 +1,466 @@
+// Fire Arena Max — Prisma schema
+// All monetary values are stored in COINS (integer). 1 coin = 1 INR.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  OWNER
+  CO_OWNER
+  FAM_MANAGER
+  PAYMENT_MANAGER
+  TOURNAMENT_MANAGER
+  ADMIN
+  MODERATOR
+  VIP
+  USER
+}
+
+enum TxType {
+  DEPOSIT
+  WITHDRAW
+  TOURNAMENT_ENTRY
+  TOURNAMENT_PRIZE
+  REFERRAL_BONUS
+  VIP_PURCHASE
+  ADMIN_ADJUST
+  REFUND
+  LOCK
+  UNLOCK
+}
+
+enum TxStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REVERSED
+}
+
+enum PaymentProvider {
+  RAZORPAY
+  MANUAL_UPI
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  FAILED
+  EXPIRED
+}
+
+enum WithdrawStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+  FAILED
+}
+
+enum TournamentStatus {
+  DRAFT
+  OPEN
+  LOCKED
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ChatChannelType {
+  GLOBAL
+  PRIVATE
+  TEAM
+  SUPPORT
+  VIP
+  TOURNAMENT
+}
+
+enum NotificationType {
+  TOURNAMENT
+  PAYMENT
+  REWARD
+  VIP
+  SYSTEM
+  CHAT
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  username       String   @unique
+  passwordHash   String
+  displayName    String?
+  gameUid        String?  // in-game UID (e.g. Free Fire UID)
+  avatarUrl      String?
+  phone          String?  @unique
+  referralCode   String   @unique
+  referredById   String?
+  referredBy     User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrals      User[]   @relation("Referrals")
+  deviceFingerprint String?
+  lastLoginIp    String?
+  isBanned       Boolean  @default(false)
+  banReason      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  roles          UserRole[]
+  wallet         Wallet?
+  sessions       Session[]
+  payments       Payment[]
+  withdrawals    Withdrawal[]
+  tournamentEntries TournamentEntry[]
+  teamMemberships TeamMember[]
+  ownedTeams     Team[]   @relation("TeamOwner")
+  chatMemberships ChatMembership[]
+  messagesSent   ChatMessage[] @relation("Sender")
+  messageReads   MessageRead[]
+  notifications  Notification[]
+  vipSubscriptions VipSubscription[]
+  auditEvents    AuditLog[]
+  referralRewards ReferralReward[] @relation("Referrer")
+  referralRewardsReceived ReferralReward[] @relation("Referee")
+
+  @@index([createdAt])
+}
+
+model Role {
+  id    String   @id @default(uuid())
+  name  RoleName @unique
+  users UserRole[]
+}
+
+model UserRole {
+  id         String   @id @default(uuid())
+  userId     String
+  roleId     String
+  grantedAt  DateTime @default(now())
+  grantedBy  String?
+  expiresAt  DateTime? // for temporary roles like VIP
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([expiresAt])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ip           String?
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Wallet {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  balanceCoins   Int      @default(0)
+  lockedCoins    Int      @default(0)
+  totalDeposited Int      @default(0)
+  totalWithdrawn Int      @default(0)
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   WalletTransaction[]
+}
+
+model WalletTransaction {
+  id            String   @id @default(uuid())
+  walletId      String
+  userId        String
+  type          TxType
+  status        TxStatus @default(SUCCESS)
+  amountCoins   Int
+  balanceAfter  Int
+  referenceId   String?  // FK-ish to payment/tournament/etc
+  referenceKind String?
+  note          String?
+  createdAt     DateTime @default(now())
+  wallet        Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([referenceId])
+}
+
+model Payment {
+  id              String          @id @default(uuid())
+  userId          String
+  provider        PaymentProvider
+  amountCoins     Int
+  status          PaymentStatus   @default(CREATED)
+  // Razorpay
+  rzpOrderId      String?         @unique
+  rzpPaymentId    String?
+  rzpSignature    String?
+  // Manual UPI
+  utr             String?
+  upiId           String?
+  screenshotUrl   String?
+  approvedById    String?
+  rejectedReason  String?
+  approvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, utr]) // prevents duplicate UTR submissions on manual UPI
+  @@index([status])
+  @@index([userId, createdAt])
+}
+
+model Withdrawal {
+  id           String         @id @default(uuid())
+  userId       String
+  amountCoins  Int
+  upiId        String
+  accountName  String?
+  status       WithdrawStatus @default(PENDING)
+  processedById String?
+  rejectReason String?
+  payoutRef    String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([userId, createdAt])
+}
+
+model Tournament {
+  id            String            @id @default(uuid())
+  title         String
+  game          String            @default("FreeFire")
+  mode          String            @default("SQUAD")
+  description   String?
+  bannerUrl     String?
+  entryFeeCoins Int               @default(0)
+  prizePoolCoins Int              @default(0)
+  maxSlots      Int
+  filledSlots   Int               @default(0)
+  startAt       DateTime
+  lockAt        DateTime
+  status        TournamentStatus  @default(DRAFT)
+  roomId        String?
+  roomPassword  String?
+  roomPublishedAt DateTime?
+  vipOnly       Boolean           @default(false)
+  createdById   String?
+  rules         String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  entries       TournamentEntry[]
+  results       TournamentResult[]
+
+  @@index([status, startAt])
+}
+
+model TournamentEntry {
+  id           String   @id @default(uuid())
+  tournamentId String
+  userId       String
+  gameUid      String
+  teamId       String?
+  slotNo       Int?
+  paidCoins    Int
+  createdAt    DateTime @default(now())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team         Team?    @relation(fields: [teamId], references: [id])
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId, slotNo])
+}
+
+model TournamentResult {
+  id           String   @id @default(uuid())
+  tournamentId String
+  userId       String
+  teamId       String?
+  rank         Int
+  kills        Int      @default(0)
+  prizeCoins   Int      @default(0)
+  createdAt    DateTime @default(now())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId, rank])
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  tag         String   @unique
+  ownerId     String
+  logoUrl     String?
+  description String?
+  createdAt   DateTime @default(now())
+  owner       User     @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     TeamMember[]
+  entries     TournamentEntry[]
+}
+
+model TeamMember {
+  id       String   @id @default(uuid())
+  teamId   String
+  userId   String
+  role     String   @default("member") // owner | captain | member
+  joinedAt DateTime @default(now())
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+model ChatChannel {
+  id         String   @id @default(uuid())
+  type       ChatChannelType
+  name       String?
+  // ref to team, tournament, or pair-of-users for PRIVATE
+  refId      String?
+  createdAt  DateTime @default(now())
+  memberships ChatMembership[]
+  messages   ChatMessage[]
+
+  @@index([type, refId])
+}
+
+model ChatMembership {
+  id        String   @id @default(uuid())
+  channelId String
+  userId    String
+  mutedUntil DateTime?
+  joinedAt  DateTime @default(now())
+  channel   ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  channelId  String
+  senderId   String
+  body       String
+  attachmentUrl String?
+  createdAt  DateTime @default(now())
+  deletedAt  DateTime?
+  channel    ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender     User     @relation("Sender", fields: [senderId], references: [id], onDelete: Cascade)
+  reads      MessageRead[]
+
+  @@index([channelId, createdAt])
+}
+
+model MessageRead {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  readAt    DateTime @default(now())
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model VipPlan {
+  id          String   @id @default(uuid())
+  code        String   @unique // WEEKLY, MONTHLY
+  title       String
+  priceCoins  Int
+  durationDays Int
+  description String?
+  isActive    Boolean  @default(true)
+  subscriptions VipSubscription[]
+}
+
+model VipSubscription {
+  id          String   @id @default(uuid())
+  userId      String
+  planId      String
+  startedAt   DateTime @default(now())
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan        VipPlan  @relation(fields: [planId], references: [id])
+
+  @@index([userId, expiresAt])
+}
+
+model ReferralReward {
+  id         String   @id @default(uuid())
+  referrerId String
+  refereeId  String   @unique
+  rewardCoins Int
+  grantedAt  DateTime @default(now())
+  referrer   User     @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee    User     @relation("Referee",  fields: [refereeId],  references: [id], onDelete: Cascade)
+
+  @@index([referrerId])
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  bannerUrl   String?
+  startsAt    DateTime
+  endsAt      DateTime
+  rewardCoins Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model BroadcastMessage {
+  id        String   @id @default(uuid())
+  title     String
+  body      String
+  createdById String?
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  target     String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+  @@index([actorId, createdAt])
+}
