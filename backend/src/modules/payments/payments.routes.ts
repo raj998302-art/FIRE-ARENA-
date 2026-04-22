@@ -24,6 +24,15 @@ router.post(
 );
 
 router.post(
+  '/razorpay/vip-order',
+  requireAuth, paymentLimiter,
+  validate(z.object({ planCode: z.string().min(2).max(32) })),
+  async (req, res, next) => {
+    try { res.json(await svc.createRazorpayVipOrder(req.user!.id, req.body.planCode)); } catch (e) { next(e); }
+  }
+);
+
+router.post(
   '/razorpay/verify',
   requireAuth, paymentLimiter,
   validate(z.object({ orderId: z.string(), paymentId: z.string(), signature: z.string() })),

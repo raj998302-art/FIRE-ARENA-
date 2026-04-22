@@ -3,19 +3,21 @@ import { razorpay, verifyRazorpaySignature } from '../../lib/razorpay';
 import { badRequest, conflict, notFound } from '../../lib/errors';
 import { postTransaction } from '../wallet/wallet.service';
 import { grantReferralRewardIfEligible } from '../referrals/referrals.service';
+import { activateVipForUser } from '../vip/vip.service';
+import { push as pushNotification } from '../notifications/notifications.service';
 import { env } from '../../config/env';
-import { PaymentProvider, PaymentStatus, TxType } from '@prisma/client';
+import { NotificationType, PaymentProvider, PaymentPurpose, PaymentStatus, TxType } from '@prisma/client';
 
 /**
- * Razorpay: create an order. The app will then open Razorpay Checkout and
- * call /payments/razorpay/verify with order_id + payment_id + signature.
+ * Razorpay: create an order for a WALLET DEPOSIT. The app opens Razorpay
+ * Checkout and calls /payments/razorpay/verify with order_id + payment_id + signature.
  */
 export async function createRazorpayOrder(userId: string, amountCoins: number) {
   if (amountCoins < 10) throw badRequest('Minimum deposit is 10 coins');
   if (amountCoins > 100000) throw badRequest('Maximum single deposit is 100000 coins');
 
   const order = await razorpay().orders.create({
-    amount: amountCoins * 100, // in paise, 1 coin = ₹1
+    amount: amountCoins * 100, // paise; 1 coin = ₹1
     currency: 'INR',
     receipt: `dep_${userId.slice(0, 8)}_${Date.now()}`,
     notes: { userId, purpose: 'wallet_deposit' },
@@ -27,6 +29,7 @@ export async function createRazorpayOrder(userId: string, amountCoins: number) {
       provider: PaymentProvider.RAZORPAY,
       amountCoins,
       status: PaymentStatus.CREATED,
+      purpose: PaymentPurpose.DEPOSIT,
       rzpOrderId: order.id,
     },
   });
@@ -37,6 +40,46 @@ export async function createRazorpayOrder(userId: string, amountCoins: number) {
     amountCoins,
     keyId: env.RAZORPAY_KEY_ID,
     currency: 'INR',
+    purpose: PaymentPurpose.DEPOSIT,
+  };
+}
+
+/**
+ * Razorpay: create an order for a direct VIP SUBSCRIPTION purchase
+ * (bypasses wallet balance). On verify we auto-activate the plan and
+ * assign the VIP role.
+ */
+export async function createRazorpayVipOrder(userId: string, planCode: string) {
+  const plan = await prisma.vipPlan.findUnique({ where: { code: planCode } });
+  if (!plan || !plan.isActive) throw notFound('VIP plan not available');
+
+  const order = await razorpay().orders.create({
+    amount: plan.priceCoins * 100,
+    currency: 'INR',
+    receipt: `vip_${userId.slice(0, 8)}_${Date.now()}`,
+    notes: { userId, purpose: 'vip_subscription', planCode: plan.code },
+  });
+
+  const payment = await prisma.payment.create({
+    data: {
+      userId,
+      provider: PaymentProvider.RAZORPAY,
+      amountCoins: plan.priceCoins,
+      status: PaymentStatus.CREATED,
+      purpose: PaymentPurpose.VIP_SUBSCRIPTION,
+      referenceId: plan.id,
+      rzpOrderId: order.id,
+    },
+  });
+
+  return {
+    paymentId: payment.id,
+    orderId: order.id,
+    amountCoins: plan.priceCoins,
+    keyId: env.RAZORPAY_KEY_ID,
+    currency: 'INR',
+    purpose: PaymentPurpose.VIP_SUBSCRIPTION,
+    plan: { code: plan.code, title: plan.title, durationDays: plan.durationDays },
   };
 }
 
@@ -45,7 +88,7 @@ export async function verifyRazorpayPayment(userId: string, input: {
 }) {
   const payment = await prisma.payment.findUnique({ where: { rzpOrderId: input.orderId } });
   if (!payment || payment.userId !== userId) throw notFound('Payment not found');
-  if (payment.status === PaymentStatus.APPROVED) return { ok: true, alreadyApproved: true };
+  if (payment.status === PaymentStatus.APPROVED) return { ok: true, alreadyApproved: true, purpose: payment.purpose };
 
   const valid = verifyRazorpaySignature(input.orderId, input.paymentId, input.signature);
   if (!valid) {
@@ -66,15 +109,28 @@ export async function verifyRazorpayPayment(userId: string, input: {
         approvedAt: new Date(),
       },
     });
-    await postTransaction({
-      userId, type: TxType.DEPOSIT, amountCoins: payment.amountCoins,
-      referenceId: payment.id, referenceKind: 'payment',
-      note: 'Razorpay deposit', tx,
-    });
+
+    if (payment.purpose === PaymentPurpose.VIP_SUBSCRIPTION && payment.referenceId) {
+      await activateVipForUser(tx, userId, payment.referenceId);
+    } else {
+      await postTransaction({
+        userId, type: TxType.DEPOSIT, amountCoins: payment.amountCoins,
+        referenceId: payment.id, referenceKind: 'payment',
+        note: 'Razorpay deposit', tx,
+      });
+    }
   });
 
-  await grantReferralRewardIfEligible(userId).catch(() => {});
-  return { ok: true };
+  if (payment.purpose === PaymentPurpose.DEPOSIT) {
+    await grantReferralRewardIfEligible(userId).catch(() => {});
+    await pushNotification({
+      userId, type: NotificationType.PAYMENT,
+      title: '💰 Deposit credited',
+      body: `${payment.amountCoins} 🪙 added to your wallet.`,
+    }).catch(() => {});
+  }
+
+  return { ok: true, purpose: payment.purpose };
 }
 
 /**

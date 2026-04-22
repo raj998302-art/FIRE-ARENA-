@@ -30,8 +30,11 @@ import kotlinx.coroutines.launch
 fun DashboardScreen(nav: NavHostController) {
     val scope = rememberCoroutineScope()
     val container = App.instance.container
+    val prefs = container.prefs
     var me by remember { mutableStateOf<Me?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showWelcome by remember { mutableStateOf(!prefs.wasShown("welcome")) }
+    var showPromo by remember { mutableStateOf(!prefs.wasShown("vip_promo")) }
 
     LaunchedEffect(Unit) {
         scope.launch {
@@ -39,6 +42,26 @@ fun DashboardScreen(nav: NavHostController) {
                 .onSuccess { me = it }
                 .onFailure { error = it.message }
         }
+    }
+
+    if (showWelcome) {
+        WelcomeDialog(
+            username = me?.displayName ?: me?.username,
+            referralCode = me?.referralCode,
+            onDismiss = {
+                prefs.markShown("welcome"); showWelcome = false
+            },
+        )
+    } else if (showPromo) {
+        VipPromoDialog(
+            onBuyVip = {
+                prefs.markShown("vip_promo"); showPromo = false
+                nav.navigate(Routes.Vip)
+            },
+            onDismiss = {
+                prefs.markShown("vip_promo"); showPromo = false
+            },
+        )
     }
 
     val roles = me?.roles ?: emptyList()
@@ -121,4 +144,58 @@ private fun QuickTile(title: String, accent: androidx.compose.ui.graphics.Color,
             }
         }
     }
+}
+
+@Composable
+private fun WelcomeDialog(username: String?, referralCode: String?, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Let's play") }
+        },
+        icon = { Text("🔥", fontSize = 34.sp) },
+        title = { Text("Welcome${if (username != null) ", $username" else ""}!", fontWeight = FontWeight.Black) },
+        text = {
+            Column {
+                Text("You're in. Here's what you can do right now:")
+                Spacer(Modifier.height(8.dp))
+                Text("• Deposit via Razorpay or UPI — 1 coin = ₹1")
+                Text("• Join tournaments, climb the leaderboard")
+                Text("• Chat with clans, join VIP for extra perks")
+                Spacer(Modifier.height(10.dp))
+                if (!referralCode.isNullOrBlank()) {
+                    Surface(color = NeonOrange.copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Your referral code", color = TextMuted, fontSize = 12.sp)
+                            Text(referralCode, fontWeight = FontWeight.Black, color = NeonOrange, fontSize = 18.sp)
+                            Text("Share it — you earn 10 🪙 once your friend deposits ₹100.", color = TextMuted, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun VipPromoDialog(onBuyVip: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = onBuyVip,
+                colors = ButtonDefaults.buttonColors(containerColor = NeonMagenta, contentColor = androidx.compose.ui.graphics.Color.White),
+            ) { Text("See VIP plans", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Maybe later") } },
+        icon = { Text("👑", fontSize = 34.sp) },
+        title = { Text("Go VIP, win bigger", fontWeight = FontWeight.Black) },
+        text = {
+            Column {
+                Text("VIP members unlock higher prize pools, exclusive tournaments, VIP chat & priority support.")
+                Spacer(Modifier.height(8.dp))
+                Text("Weekly from ₹49 · Monthly from ₹149", color = NeonOrange, fontWeight = FontWeight.Bold)
+            }
+        }
+    )
 }

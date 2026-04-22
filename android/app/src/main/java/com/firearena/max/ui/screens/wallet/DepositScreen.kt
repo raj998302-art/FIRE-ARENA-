@@ -12,13 +12,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.firearena.max.App
-import com.firearena.max.data.api.ManualUpiInfo
+import com.firearena.max.data.PaymentBus
+import com.firearena.max.data.PaymentResult
+import com.firearena.max.data.api.PaymentMethods
 import com.firearena.max.ui.common.ErrorBanner
 import com.firearena.max.ui.common.LabelField
 import com.firearena.max.ui.common.NeonCard
 import com.firearena.max.ui.common.PrimaryButton
 import com.firearena.max.ui.common.shortErr
 import com.razorpay.Checkout
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -30,14 +34,12 @@ fun DepositScreen(nav: NavHostController) {
 
     var amount by remember { mutableStateOf("100") }
     var utr by remember { mutableStateOf("") }
-    var methods by remember { mutableStateOf<com.firearena.max.data.api.PaymentMethods?>(null) }
+    var methods by remember { mutableStateOf<PaymentMethods?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        runCatching { methods = container.paymentRepo.methods() }
-    }
+    LaunchedEffect(Unit) { runCatching { methods = container.paymentRepo.methods() } }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Deposit") }, navigationIcon = {
@@ -55,24 +57,48 @@ fun DepositScreen(nav: NavHostController) {
                 Spacer(Modifier.height(8.dp))
                 LabelField(amount, { amount = it.filter { c -> c.isDigit() } }, "Amount in coins (₹)")
                 Spacer(Modifier.height(12.dp))
-                PrimaryButton("Pay with Razorpay", loading = loading, enabled = (amount.toIntOrNull() ?: 0) >= 10) {
+                PrimaryButton("Pay ${amount.toIntOrNull() ?: 0} with Razorpay", loading = loading,
+                    enabled = (amount.toIntOrNull() ?: 0) >= 10) {
                     val amt = amount.toIntOrNull() ?: return@PrimaryButton
-                    error = null; loading = true
+                    error = null; message = null; loading = true
                     scope.launch {
                         try {
                             val order = container.paymentRepo.createRazorpayOrder(amt)
-                            val activity = ctx as? Activity ?: return@launch.also { loading = false }
+                            PaymentBus.pendingOrderId = order.orderId
+                            val activity = ctx as? Activity ?: run { loading = false; return@launch }
                             val co = Checkout()
                             co.setKeyID(order.keyId)
-                            val opts = JSONObject()
-                            opts.put("name", "Fire Arena Max")
-                            opts.put("description", "Wallet deposit")
-                            opts.put("currency", order.currency)
-                            opts.put("amount", order.amountCoins * 100)
-                            opts.put("order_id", order.orderId)
+                            val opts = JSONObject().apply {
+                                put("name", "Fire Arena Max")
+                                put("description", "Wallet deposit — ${order.amountCoins} 🪙")
+                                put("currency", order.currency)
+                                put("amount", order.amountCoins * 100)
+                                put("order_id", order.orderId)
+                                put("theme", JSONObject().put("color", "#FF6A00"))
+                                put("send_sms_hash", true)
+                            }
                             co.open(activity, opts)
-                            message = "Razorpay opened. Complete payment — verification runs automatically on return."
-                            // Note: a real implementation listens to PaymentResultListener and calls verifyRazorpay(...)
+
+                            // Wait for THIS order's result
+                            val result = PaymentBus.results
+                                .filter { r ->
+                                    when (r) {
+                                        is PaymentResult.Success -> r.orderId == order.orderId
+                                        is PaymentResult.Error -> r.orderId == order.orderId
+                                        is PaymentResult.Cancelled -> r.orderId == order.orderId
+                                    }
+                                }
+                                .first()
+                            when (result) {
+                                is PaymentResult.Success -> {
+                                    val v = container.paymentRepo.verifyRazorpay(
+                                        result.orderId, result.paymentId, result.signature
+                                    )
+                                    message = if (v.ok) "Paid. ${order.amountCoins} 🪙 credited." else "Verification failed."
+                                }
+                                is PaymentResult.Cancelled -> message = "Payment cancelled."
+                                is PaymentResult.Error -> error = "Payment failed: ${result.description}"
+                            }
                         } catch (e: Exception) {
                             error = (e.message ?: "failed").shortErr()
                         } finally { loading = false }

@@ -202,6 +202,8 @@ model Payment {
   provider        PaymentProvider
   amountCoins     Int
   status          PaymentStatus   @default(CREATED)
+  purpose         PaymentPurpose  @default(DEPOSIT)
+  referenceId    String?         // e.g. VipPlan.id when purpose=VIP_SUBSCRIPTION
   // Razorpay
   rzpOrderId      String?         @unique
   rzpPaymentId    String?
@@ -220,6 +222,11 @@ model Payment {
   @@unique([provider, utr]) // prevents duplicate UTR submissions on manual UPI
   @@index([status])
   @@index([userId, createdAt])
+}
+
+enum PaymentPurpose {
+  DEPOSIT
+  VIP_SUBSCRIPTION
 }
 
 model Withdrawal {

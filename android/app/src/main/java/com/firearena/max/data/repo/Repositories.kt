@@ -68,6 +68,7 @@ class ChatRepository(private val api: ApiService) {
 class PaymentRepository(private val api: ApiService) {
     suspend fun methods() = api.paymentMethods()
     suspend fun createRazorpayOrder(amount: Int) = api.createRazorpayOrder(RazorpayOrderRequest(amount))
+    suspend fun createRazorpayVipOrder(planCode: String) = api.createRazorpayVipOrder(RazorpayVipOrderRequest(planCode))
     suspend fun verifyRazorpay(orderId: String, paymentId: String, signature: String) =
         api.verifyRazorpay(RazorpayVerifyRequest(orderId, paymentId, signature))
     suspend fun submitUtr(amount: Int, utr: String, upiId: String? = null) =

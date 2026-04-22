@@ -122,13 +122,20 @@ data class CreateTournamentRequest(
 data class RazorpayOrderRequest(val amountCoins: Int)
 
 @Serializable
+data class RazorpayVipOrderRequest(val planCode: String)
+
+@Serializable
 data class RazorpayOrderResponse(
     val paymentId: String,
     val orderId: String,
     val amountCoins: Int,
     val keyId: String,
     val currency: String,
+    val purpose: String? = null,
 )
+
+@Serializable
+data class RazorpayVerifyResponse(val ok: Boolean, val purpose: String? = null, val alreadyApproved: Boolean? = null)
 
 @Serializable
 data class RazorpayVerifyRequest(

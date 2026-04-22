@@ -37,8 +37,11 @@ interface ApiService {
     @POST("api/payments/razorpay/order")
     suspend fun createRazorpayOrder(@Body body: RazorpayOrderRequest): RazorpayOrderResponse
 
+    @POST("api/payments/razorpay/vip-order")
+    suspend fun createRazorpayVipOrder(@Body body: RazorpayVipOrderRequest): RazorpayOrderResponse
+
     @POST("api/payments/razorpay/verify")
-    suspend fun verifyRazorpay(@Body body: RazorpayVerifyRequest): GenericOk
+    suspend fun verifyRazorpay(@Body body: RazorpayVerifyRequest): RazorpayVerifyResponse
 
     @POST("api/payments/upi/submit")
     suspend fun submitUtr(@Body body: UpiSubmitRequest): Payment

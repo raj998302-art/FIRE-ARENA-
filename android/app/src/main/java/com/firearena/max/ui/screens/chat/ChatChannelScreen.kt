@@ -10,31 +10,63 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.firearena.max.App
+import com.firearena.max.data.ChatSocket
 import com.firearena.max.data.api.ChatMessage
-import com.firearena.max.ui.common.LabelField
 import com.firearena.max.ui.common.NeonCard
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 
 @Composable
 fun ChatChannelScreen(nav: NavHostController, channelId: String) {
     val scope = rememberCoroutineScope()
-    val repo = App.instance.container.chatRepo
+    val container = App.instance.container
+    val repo = container.chatRepo
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var body by remember { mutableStateOf("") }
+    var connected by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val json = remember { Json { ignoreUnknownKeys = true } }
 
-    // Simple polling (socket integration would be ideal; kept MVP)
-    LaunchedEffect(channelId) {
+    // Spin up a per-screen ChatSocket; disconnect when we leave.
+    val socket = remember(channelId) {
+        val token = container.prefs.accessToken.orEmpty()
+        if (token.isEmpty()) null
+        else ChatSocket(container.baseUrl.trimEnd('/'), token)
+    }
+
+    DisposableEffect(channelId, socket) {
+        socket?.connect()
+        onDispose { socket?.disconnect() }
+    }
+
+    LaunchedEffect(channelId, socket) {
+        // Initial history
+        runCatching { messages = repo.messages(channelId, 100).reversed() }
+        // Track connection + stream
+        socket?.let { s ->
+            scope.launch { s.connected.collect { connected = it; if (it) s.joinChannel(channelId) } }
+            scope.launch {
+                s.messageFlow().collectLatest { raw ->
+                    runCatching { json.decodeFromString(ChatMessage.serializer(), raw) }
+                        .onSuccess { if (it.channelId == channelId) messages = messages + it }
+                }
+            }
+        }
+        // Fallback slow poll in case socket is unavailable
         while (true) {
-            runCatching { messages = repo.messages(channelId, 100).reversed() }
-            delay(3000)
+            delay(15_000)
+            if (!connected) runCatching { messages = repo.messages(channelId, 100).reversed() }
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Channel") }, navigationIcon = {
-        TextButton(onClick = { nav.popBackStack() }) { Text("Back") }
-    }) }) { pv ->
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text(if (connected) "Channel · live" else "Channel") },
+            navigationIcon = { TextButton(onClick = { nav.popBackStack() }) { Text("Back") } }
+        )
+    }) { pv ->
         Column(Modifier.padding(pv).fillMaxSize()) {
             LazyColumn(Modifier.weight(1f).padding(8.dp), state = listState) {
                 items(messages) { m ->
@@ -47,16 +79,23 @@ fun ChatChannelScreen(nav: NavHostController, channelId: String) {
                 }
             }
             Row(Modifier.padding(8.dp)) {
-                OutlinedTextField(value = body, onValueChange = { body = it },
-                    modifier = Modifier.weight(1f), placeholder = { Text("Type a message…") })
+                OutlinedTextField(
+                    value = body, onValueChange = { body = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Type a message…") }
+                )
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
                     val t = body.trim()
                     if (t.isEmpty()) return@Button
+                    body = ""
                     scope.launch {
-                        runCatching { repo.send(channelId, t) }
-                        body = ""
-                        runCatching { messages = repo.messages(channelId, 100).reversed() }
+                        if (connected) {
+                            socket!!.sendMessage(channelId, t)
+                        } else {
+                            runCatching { repo.send(channelId, t) }
+                            runCatching { messages = repo.messages(channelId, 100).reversed() }
+                        }
                     }
                 }) { Text("Send") }
             }
