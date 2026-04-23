@@ -48,6 +48,9 @@ export async function postTransaction(opts: {
       case TxType.TOURNAMENT_PRIZE:
       case TxType.ADMIN_ADJUST:
       case TxType.REFUND:
+      case TxType.PROMO_REWARD:
+      case TxType.SPIN_REWARD:
+      case TxType.STREAK_BONUS:
         newBal += opts.amountCoins;
         if (opts.type === TxType.DEPOSIT) totalDep += opts.amountCoins;
         break;

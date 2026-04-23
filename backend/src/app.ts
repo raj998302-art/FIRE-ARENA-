@@ -22,6 +22,7 @@ import notificationsRoutes from './modules/notifications/notifications.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import eventsRoutes from './modules/events/events.routes';
 import leaderboardRoutes from './modules/leaderboard/leaderboard.routes';
+import rewardsRoutes from './modules/rewards/rewards.routes';
 
 export function createApp() {
   const app = express();
@@ -61,6 +62,7 @@ export function createApp() {
   app.use('/api/admin', adminRoutes);
   app.use('/api/events', eventsRoutes);
   app.use('/api/leaderboard', leaderboardRoutes);
+  app.use('/api/rewards', rewardsRoutes);
 
   app.use((_req, res) => res.status(404).json({ error: 'NOT_FOUND' }));
   app.use(errorHandler);

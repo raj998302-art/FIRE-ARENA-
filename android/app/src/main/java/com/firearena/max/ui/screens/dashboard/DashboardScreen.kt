@@ -100,7 +100,12 @@ fun DashboardScreen(nav: NavHostController) {
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     QuickTile("👑 VIP", NeonOrange, Modifier.weight(1f)) { nav.navigate(Routes.Vip) }
-                    QuickTile("🎁 Referrals", NeonGreen, Modifier.weight(1f)) { nav.navigate(Routes.Referrals) }
+                    QuickTile("🎁 Rewards", NeonMagenta, Modifier.weight(1f)) { nav.navigate(Routes.Rewards) }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    QuickTile("🤝 Referrals", NeonGreen, Modifier.weight(1f)) { nav.navigate(Routes.Referrals) }
+                    QuickTile("🔔 Alerts", NeonCyan, Modifier.weight(1f)) { nav.navigate(Routes.Notifications) }
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

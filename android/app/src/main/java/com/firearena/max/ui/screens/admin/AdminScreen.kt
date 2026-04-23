@@ -26,6 +26,7 @@ fun AdminScreen(nav: NavHostController) {
     var stats by remember { mutableStateOf<AdminStats?>(null) }
     var bTitle by remember { mutableStateOf("") }
     var bBody by remember { mutableStateOf("") }
+    var maintenanceMsg by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -53,6 +54,11 @@ fun AdminScreen(nav: NavHostController) {
                     Button(modifier = Modifier.weight(1f), onClick = { nav.navigate(Routes.AdminPendingPayments) }) { Text("UTR queue") }
                     Button(modifier = Modifier.weight(1f), onClick = { nav.navigate(Routes.AdminPendingWithdrawals) }) { Text("Withdrawals") }
                 }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(modifier = Modifier.weight(1f), onClick = { nav.navigate(Routes.AdminCreateTournament) }) { Text("New tournament") }
+                    Button(modifier = Modifier.weight(1f), onClick = { nav.navigate(Routes.AdminPromoCodes) }) { Text("Promo codes") }
+                }
                 Spacer(Modifier.height(12.dp))
                 NeonCard {
                     Text("Broadcast", fontWeight = FontWeight.Bold)
@@ -70,6 +76,29 @@ fun AdminScreen(nav: NavHostController) {
                                 .onSuccess { message = "Sent!"; bTitle = ""; bBody = "" }
                                 .onFailure { error = (it.message ?: "failed").shortErr() }
                         }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                NeonCard {
+                    Text("Maintenance mode", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    LabelField(maintenanceMsg, { maintenanceMsg = it }, "Message shown to users")
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(modifier = Modifier.weight(1f), onClick = {
+                            scope.launch {
+                                runCatching { repo.setMaintenance(true, maintenanceMsg.ifBlank { null }) }
+                                    .onSuccess { message = "Maintenance ON" }
+                                    .onFailure { error = (it.message ?: "failed").shortErr() }
+                            }
+                        }) { Text("Turn ON") }
+                        Button(modifier = Modifier.weight(1f), onClick = {
+                            scope.launch {
+                                runCatching { repo.setMaintenance(false) }
+                                    .onSuccess { message = "Maintenance OFF" }
+                                    .onFailure { error = (it.message ?: "failed").shortErr() }
+                            }
+                        }) { Text("Turn OFF") }
                     }
                 }
             }

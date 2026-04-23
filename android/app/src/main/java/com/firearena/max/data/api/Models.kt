@@ -312,3 +312,63 @@ data class AdminMarkPaid(val payoutRef: String)
 
 @Serializable
 data class GenericOk(val ok: Boolean = true)
+
+// --- OAuth ---
+@Serializable
+data class GoogleSignInRequest(val idToken: String)
+
+@Serializable
+data class DiscordSignInRequest(val code: String, val redirectUri: String)
+
+// --- Rewards ---
+@Serializable
+data class SpinStatus(
+    val canSpin: Boolean,
+    val nextAvailableAt: String,
+    val lastSpinAt: String? = null,
+    val streak: Int,
+    val wheel: List<Int>,
+)
+
+@Serializable
+data class SpinResult(
+    val baseReward: Int,
+    val streakBonus: Int,
+    val streak: Int,
+)
+
+@Serializable
+data class PromoRedeemRequest(val code: String)
+
+@Serializable
+data class PromoRedeemResult(val code: String, val rewardCoins: Int)
+
+@Serializable
+data class PromoCode(
+    val id: String,
+    val code: String,
+    val rewardCoins: Int,
+    val maxUses: Int,
+    val usedCount: Int,
+    val perUserLimit: Int,
+    val expiresAt: String? = null,
+    val isActive: Boolean,
+    val createdAt: String,
+)
+
+@Serializable
+data class CreatePromoRequest(
+    val code: String,
+    val rewardCoins: Int,
+    val maxUses: Int? = null,
+    val perUserLimit: Int? = null,
+    val expiresAt: String? = null,
+)
+
+// --- Push token registration ---
+@Serializable
+data class PushTokenRequest(val pushPlayerId: String)
+
+// --- Admin: maintenance ---
+@Serializable
+data class MaintenanceRequest(val enabled: Boolean, val message: String? = null)

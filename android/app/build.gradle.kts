@@ -85,6 +85,17 @@ dependencies {
     // Razorpay
     implementation("com.razorpay:checkout:1.6.40")
 
+    // Browser tab (used for Discord OAuth redirect)
+    implementation("androidx.browser:browser:1.8.0")
+
+    // OneSignal push (lib loads lazily; safe if app id not set)
+    implementation("com.onesignal:OneSignal:[5.0.0, 5.99.99]")
+
+    // Google Sign-In via Credential Manager
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
     // Tests
     testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")

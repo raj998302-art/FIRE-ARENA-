@@ -4,6 +4,7 @@ import { validate } from '../../middleware/validate';
 import { authLimiter } from '../../middleware/rateLimit';
 import { requireAuth } from '../../middleware/auth';
 import * as svc from './auth.service';
+import * as oauth from './oauth.service';
 
 const router = Router();
 
@@ -56,6 +57,38 @@ router.post('/logout', validate(z.object({ refreshToken: z.string() })), async (
 router.post('/logout-all', requireAuth, async (req, res, next) => {
   try { await svc.logoutAll(req.user!.id); res.json({ ok: true }); } catch (e) { next(e); }
 });
+
+// ---- OAuth (Google ID-token + Discord code exchange) ----
+
+router.post(
+  '/oauth/google',
+  authLimiter,
+  validate(z.object({ idToken: z.string().min(20) })),
+  async (req, res, next) => {
+    try {
+      const r = await oauth.signInWithGoogle(req.body.idToken, req.ip, req.headers['user-agent']);
+      res.json({
+        accessToken: r.accessToken, refreshToken: r.refreshToken,
+        roles: r.roles, user: sanitizeUser(r.user),
+      });
+    } catch (e) { next(e); }
+  }
+);
+
+router.post(
+  '/oauth/discord',
+  authLimiter,
+  validate(z.object({ code: z.string().min(8), redirectUri: z.string().url() })),
+  async (req, res, next) => {
+    try {
+      const r = await oauth.signInWithDiscord(req.body.code, req.body.redirectUri, req.ip, req.headers['user-agent']);
+      res.json({
+        accessToken: r.accessToken, refreshToken: r.refreshToken,
+        roles: r.roles, user: sanitizeUser(r.user),
+      });
+    } catch (e) { next(e); }
+  }
+);
 
 function sanitizeUser(u: any) {
   if (!u) return u;

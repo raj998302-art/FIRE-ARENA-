@@ -13,6 +13,9 @@ import com.firearena.max.ui.screens.admin.AdminScreen
 import com.firearena.max.ui.screens.admin.AdminPendingPaymentsScreen
 import com.firearena.max.ui.screens.admin.AdminPendingWithdrawalsScreen
 import com.firearena.max.ui.screens.admin.AdminUsersScreen
+import com.firearena.max.ui.screens.admin.AdminCreateTournamentScreen
+import com.firearena.max.ui.screens.admin.AdminPromoCodesScreen
+import com.firearena.max.ui.screens.rewards.RewardsScreen
 import com.firearena.max.ui.screens.auth.LoginScreen
 import com.firearena.max.ui.screens.auth.RegisterScreen
 import com.firearena.max.ui.screens.chat.ChatChannelScreen
@@ -51,6 +54,9 @@ object Routes {
     const val AdminUsers = "admin/users"
     const val AdminPendingPayments = "admin/payments"
     const val AdminPendingWithdrawals = "admin/withdrawals"
+    const val AdminCreateTournament = "admin/tournaments/new"
+    const val AdminPromoCodes = "admin/promos"
+    const val Rewards = "rewards"
 }
 
 @Composable
@@ -86,5 +92,8 @@ fun AppNavHost() {
         composable(Routes.AdminUsers)  { AdminUsersScreen(nav) }
         composable(Routes.AdminPendingPayments) { AdminPendingPaymentsScreen(nav) }
         composable(Routes.AdminPendingWithdrawals) { AdminPendingWithdrawalsScreen(nav) }
+        composable(Routes.AdminCreateTournament) { AdminCreateTournamentScreen(nav) }
+        composable(Routes.AdminPromoCodes) { AdminPromoCodesScreen(nav) }
+        composable(Routes.Rewards) { RewardsScreen(nav) }
     }
 }

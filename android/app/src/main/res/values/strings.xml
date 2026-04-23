@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Fire Arena Max</string>
+
+    <!-- Runtime configuration. Override in a local `strings_local.xml` or via CI, do NOT commit real secrets here. -->
+    <string name="api_base_url">http://10.0.2.2:4000/</string>
+    <string name="razorpay_key_id">rzp_test_SgUv92vbgNFr9z</string>
+
+    <!-- OneSignal app id — safe to ship on-device; the REST key stays server-side. -->
+    <string name="onesignal_app_id"></string>
+
+    <!-- Google OAuth 2.0 Web client id used by Credential Manager's GetGoogleIdOption. -->
+    <string name="google_oauth_web_client_id"></string>
+
+    <!-- Discord OAuth 2.0 client id + redirect URI (custom-scheme deep link). -->
+    <string name="discord_oauth_client_id"></string>
+    <string name="discord_oauth_redirect_uri">firearenamax://oauth/discord</string>
 </resources>

@@ -20,6 +20,18 @@ class AuthRepository(private val api: ApiService, private val prefs: AuthPrefs) 
         return res
     }
 
+    suspend fun signInWithGoogle(idToken: String): AuthResponse {
+        val res = api.oauthGoogle(GoogleSignInRequest(idToken))
+        saveSession(res)
+        return res
+    }
+
+    suspend fun signInWithDiscord(code: String, redirectUri: String): AuthResponse {
+        val res = api.oauthDiscord(DiscordSignInRequest(code, redirectUri))
+        saveSession(res)
+        return res
+    }
+
     suspend fun logout() {
         val rt = prefs.refreshToken
         if (!rt.isNullOrEmpty()) {
@@ -131,4 +143,20 @@ class AdminRepository(private val api: ApiService) {
         api.adminAdjustBalance(userId, AdminAdjustRequest(delta, note))
     suspend fun broadcast(title: String, body: String) =
         api.adminBroadcast(AdminBroadcastRequest(title, body))
+    suspend fun setMaintenance(enabled: Boolean, message: String? = null) =
+        api.adminSetMaintenance(MaintenanceRequest(enabled, message))
+    suspend fun createTournament(body: CreateTournamentRequest) = api.createTournament(body)
+}
+
+class RewardsRepository(private val api: ApiService) {
+    suspend fun spinStatus() = api.spinStatus()
+    suspend fun spin() = api.doSpin()
+    suspend fun redeemPromo(code: String) = api.redeemPromo(PromoRedeemRequest(code))
+    suspend fun adminListPromos() = api.adminListPromos()
+    suspend fun adminCreatePromo(req: CreatePromoRequest) = api.adminCreatePromo(req)
+    suspend fun adminDeactivatePromo(code: String) = api.adminDeactivatePromo(code)
+}
+
+class PushRepository(private val api: ApiService) {
+    suspend fun register(pushPlayerId: String) = api.registerPushToken(PushTokenRequest(pushPlayerId))
 }

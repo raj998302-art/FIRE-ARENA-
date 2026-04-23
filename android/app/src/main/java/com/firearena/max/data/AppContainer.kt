@@ -16,6 +16,8 @@ import com.firearena.max.data.repo.NotificationRepository
 import com.firearena.max.data.repo.ReferralRepository
 import com.firearena.max.data.repo.LeaderboardRepository
 import com.firearena.max.data.repo.WithdrawalRepository
+import com.firearena.max.data.repo.RewardsRepository
+import com.firearena.max.data.repo.PushRepository
 
 class AppContainer(context: Context) {
     val prefs = AuthPrefs(context)
@@ -35,4 +37,6 @@ class AppContainer(context: Context) {
     val referralRepo = ReferralRepository(api)
     val leaderboardRepo = LeaderboardRepository(api)
     val withdrawalRepo = WithdrawalRepository(api)
+    val rewardsRepo = RewardsRepository(api)
+    val pushRepo = PushRepository(api)
 }

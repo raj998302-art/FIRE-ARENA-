@@ -177,4 +177,40 @@ interface ApiService {
 
     @POST("api/admin/broadcast")
     suspend fun adminBroadcast(@Body body: AdminBroadcastRequest): Map<String, String>
+
+    @POST("api/admin/maintenance")
+    suspend fun adminSetMaintenance(@Body body: MaintenanceRequest): Map<String, String>
+
+    @GET("api/admin/maintenance")
+    suspend fun adminGetMaintenance(): Map<String, String>
+
+    // --- OAuth ---
+    @POST("api/auth/oauth/google")
+    suspend fun oauthGoogle(@Body body: GoogleSignInRequest): AuthResponse
+
+    @POST("api/auth/oauth/discord")
+    suspend fun oauthDiscord(@Body body: DiscordSignInRequest): AuthResponse
+
+    // --- Rewards ---
+    @GET("api/rewards/spin/status")
+    suspend fun spinStatus(): SpinStatus
+
+    @POST("api/rewards/spin")
+    suspend fun doSpin(): SpinResult
+
+    @POST("api/rewards/promo/redeem")
+    suspend fun redeemPromo(@Body body: PromoRedeemRequest): PromoRedeemResult
+
+    @GET("api/rewards/admin/promos")
+    suspend fun adminListPromos(): List<PromoCode>
+
+    @POST("api/rewards/admin/promos")
+    suspend fun adminCreatePromo(@Body body: CreatePromoRequest): PromoCode
+
+    @POST("api/rewards/admin/promos/{code}/deactivate")
+    suspend fun adminDeactivatePromo(@Path("code") code: String): PromoCode
+
+    // --- Push ---
+    @POST("api/notifications/push-token")
+    suspend fun registerPushToken(@Body body: PushTokenRequest): GenericOk
 }

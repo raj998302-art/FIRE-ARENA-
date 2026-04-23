@@ -33,6 +33,9 @@ enum TxType {
   REFUND
   LOCK
   UNLOCK
+  PROMO_REWARD
+  SPIN_REWARD
+  STREAK_BONUS
 }
 
 enum TxStatus {
@@ -108,6 +111,15 @@ model User {
   lastLoginIp    String?
   isBanned       Boolean  @default(false)
   banReason      String?
+  // OAuth / federated identities — nullable, unique when set.
+  googleId       String?  @unique
+  discordId      String?  @unique
+  // OneSignal player id for push; one per device last-seen suffices for MVP.
+  pushPlayerId   String?
+  // Daily-spin & streak bookkeeping.
+  lastSpinAt     DateTime?
+  streakCount    Int      @default(0)
+  lastStreakDate DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -127,6 +139,8 @@ model User {
   auditEvents    AuditLog[]
   referralRewards ReferralReward[] @relation("Referrer")
   referralRewardsReceived ReferralReward[] @relation("Referee")
+  promoRedemptions PromoRedemption[]
+  spinLogs       DailySpinLog[]
 
   @@index([createdAt])
 }
@@ -456,6 +470,46 @@ model BroadcastMessage {
 model Setting {
   key   String @id
   value String
+}
+
+model PromoCode {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  rewardCoins  Int
+  maxUses      Int      @default(1)
+  usedCount    Int      @default(0)
+  perUserLimit Int      @default(1)
+  expiresAt    DateTime?
+  isActive     Boolean  @default(true)
+  createdById  String?
+  createdAt    DateTime @default(now())
+  redemptions  PromoRedemption[]
+
+  @@index([isActive, expiresAt])
+}
+
+model PromoRedemption {
+  id         String    @id @default(uuid())
+  promoId    String
+  userId     String
+  amountCoins Int
+  createdAt  DateTime  @default(now())
+  promo      PromoCode @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([promoId, userId])
+  @@index([userId])
+}
+
+model DailySpinLog {
+  id          String   @id @default(uuid())
+  userId      String
+  rewardCoins Int
+  streak      Int
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model AuditLog {

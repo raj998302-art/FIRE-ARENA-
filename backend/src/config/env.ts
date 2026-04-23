@@ -38,6 +38,22 @@ export const env = {
 
   RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10),
   RATE_LIMIT_MAX: parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
+
+  // OneSignal
+  ONESIGNAL_APP_ID: process.env.ONESIGNAL_APP_ID ?? '',
+  ONESIGNAL_REST_API_KEY: process.env.ONESIGNAL_REST_API_KEY ?? '',
+
+  // OAuth
+  GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID ?? '',
+  GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? '',
+  DISCORD_OAUTH_CLIENT_ID: process.env.DISCORD_OAUTH_CLIENT_ID ?? '',
+  DISCORD_OAUTH_CLIENT_SECRET: process.env.DISCORD_OAUTH_CLIENT_SECRET ?? '',
+  DISCORD_OAUTH_REDIRECT_URI: process.env.DISCORD_OAUTH_REDIRECT_URI ?? 'firearenamax://oauth/discord',
+
+  // Rewards
+  DAILY_SPIN_COOLDOWN_HOURS: parseInt(process.env.DAILY_SPIN_COOLDOWN_HOURS ?? '24', 10),
+  STREAK_BONUS_EVERY_DAYS: parseInt(process.env.STREAK_BONUS_EVERY_DAYS ?? '7', 10),
+  STREAK_BONUS_COINS: parseInt(process.env.STREAK_BONUS_COINS ?? '20', 10),
 };
 
 export const isProd = env.NODE_ENV === 'production';
