@@ -193,11 +193,15 @@ export async function approveManualPayment(paymentId: string, approverId: string
   if (!payment) throw notFound('Payment not found');
   if (payment.status !== PaymentStatus.PENDING_APPROVAL) throw badRequest('Payment is not pending');
 
+  // Compare-and-set on status to prevent two concurrent admin approvals from
+  // both crediting the wallet. The `where` filter ensures only one of the
+  // concurrent transactions matches the row.
   await prisma.$transaction(async (tx) => {
-    await tx.payment.update({
-      where: { id: paymentId },
+    const updated = await tx.payment.updateMany({
+      where: { id: paymentId, status: PaymentStatus.PENDING_APPROVAL },
       data: { status: PaymentStatus.APPROVED, approvedById: approverId, approvedAt: new Date() },
     });
+    if (updated.count !== 1) throw conflict('Payment already processed');
     await postTransaction({
       userId: payment.userId, type: TxType.DEPOSIT, amountCoins: payment.amountCoins,
       referenceId: payment.id, referenceKind: 'payment',
@@ -213,10 +217,11 @@ export async function rejectManualPayment(paymentId: string, approverId: string,
   const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
   if (!payment) throw notFound('Payment not found');
   if (payment.status !== PaymentStatus.PENDING_APPROVAL) throw badRequest('Payment is not pending');
-  await prisma.payment.update({
-    where: { id: paymentId },
+  const updated = await prisma.payment.updateMany({
+    where: { id: paymentId, status: PaymentStatus.PENDING_APPROVAL },
     data: { status: PaymentStatus.REJECTED, approvedById: approverId, rejectedReason: reason, approvedAt: new Date() },
   });
+  if (updated.count !== 1) throw conflict('Payment already processed');
   return { ok: true };
 }
 
