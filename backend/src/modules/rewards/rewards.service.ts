@@ -57,34 +57,43 @@ export async function spinStatus(userId: string) {
 }
 
 export async function doSpin(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, lastSpinAt: true, streakCount: true, lastStreakDate: true },
-  });
-  if (!user) throw notFound('User not found');
   const cooldownMs = env.DAILY_SPIN_COOLDOWN_HOURS * 3600_000;
   const now = new Date();
-  if (user.lastSpinAt && now.getTime() - user.lastSpinAt.getTime() < cooldownMs) {
-    const nextAvailableAt = new Date(user.lastSpinAt.getTime() + cooldownMs);
-    throw conflict(`Spin on cooldown. Next at ${nextAvailableAt.toISOString()}`);
-  }
-
   const baseReward = pickSpinReward();
 
-  // Streak update
-  let newStreak: number;
-  if (user.lastStreakDate && isSameUtcDay(user.lastStreakDate, now)) {
-    newStreak = user.streakCount; // already counted today (shouldn't happen given cooldown, but safe)
-  } else if (user.lastStreakDate && isConsecutiveUtcDay(user.lastStreakDate, now)) {
-    newStreak = user.streakCount + 1;
-  } else {
-    newStreak = 1;
-  }
-
-  const streakBonus = (newStreak > 0 && newStreak % env.STREAK_BONUS_EVERY_DAYS === 0)
-    ? env.STREAK_BONUS_COINS : 0;
-
+  // Cooldown check + user read must happen inside the transaction so concurrent
+  // requests can't both pass the check and credit rewards twice.
   const result = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true, lastSpinAt: true, streakCount: true, lastStreakDate: true },
+    });
+    if (!user) throw notFound('User not found');
+    if (user.lastSpinAt && now.getTime() - user.lastSpinAt.getTime() < cooldownMs) {
+      const nextAvailableAt = new Date(user.lastSpinAt.getTime() + cooldownMs);
+      throw conflict(`Spin on cooldown. Next at ${nextAvailableAt.toISOString()}`);
+    }
+
+    let newStreak: number;
+    if (user.lastStreakDate && isSameUtcDay(user.lastStreakDate, now)) {
+      newStreak = user.streakCount;
+    } else if (user.lastStreakDate && isConsecutiveUtcDay(user.lastStreakDate, now)) {
+      newStreak = user.streakCount + 1;
+    } else {
+      newStreak = 1;
+    }
+    const streakBonus = (newStreak > 0 && newStreak % env.STREAK_BONUS_EVERY_DAYS === 0)
+      ? env.STREAK_BONUS_COINS : 0;
+
+    // Atomic compare-and-set: only bump `lastSpinAt` if it still matches what we
+    // just read. If a concurrent request sneaks in first this update matches 0
+    // rows and the transaction aborts.
+    const updated = await tx.user.updateMany({
+      where: { id: userId, lastSpinAt: user.lastSpinAt ?? null },
+      data: { lastSpinAt: now, streakCount: newStreak, lastStreakDate: now },
+    });
+    if (updated.count !== 1) throw conflict('Spin already claimed in this window.');
+
     await postTransaction({
       userId, type: TxType.SPIN_REWARD, amountCoins: baseReward,
       referenceKind: 'spin', note: `Daily spin +${baseReward}`, tx,
@@ -98,18 +107,16 @@ export async function doSpin(userId: string) {
     await tx.dailySpinLog.create({
       data: { userId, rewardCoins: baseReward + streakBonus, streak: newStreak },
     });
-    await tx.user.update({
-      where: { id: userId },
-      data: { lastSpinAt: now, streakCount: newStreak, lastStreakDate: now },
-    });
     return { baseReward, streakBonus, streak: newStreak };
   });
 
   pushNotification({
     userId, type: NotificationType.REWARD,
-    title: streakBonus > 0 ? `🎁 +${baseReward + streakBonus} 🪙 (streak ${newStreak}!)` : `🎁 +${baseReward} 🪙 from your daily spin`,
-    body: streakBonus > 0
-      ? `You hit a ${newStreak}-day streak and earned a ${streakBonus} bonus!`
+    title: result.streakBonus > 0
+      ? `🎁 +${result.baseReward + result.streakBonus} 🪙 (streak ${result.streak}!)`
+      : `🎁 +${result.baseReward} 🪙 from your daily spin`,
+    body: result.streakBonus > 0
+      ? `You hit a ${result.streak}-day streak and earned a ${result.streakBonus} bonus!`
       : `Come back tomorrow to keep your streak going.`,
   }).catch(() => {});
 

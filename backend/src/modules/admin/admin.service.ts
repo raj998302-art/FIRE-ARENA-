@@ -5,7 +5,7 @@ import { RoleName, TxType } from '@prisma/client';
 import * as notif from '../notifications/notifications.service';
 
 export async function listUsers(search?: string, limit = 50, cursor?: string) {
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     where: search
       ? { OR: [
           { email: { contains: search, mode: 'insensitive' } },
@@ -18,6 +18,8 @@ export async function listUsers(search?: string, limit = 50, cursor?: string) {
     orderBy: { createdAt: 'desc' },
     include: { wallet: true, roles: { include: { role: true } } },
   });
+  // Strip passwordHash — admin-only endpoint, but defense in depth.
+  return users.map(({ passwordHash, ...rest }) => rest);
 }
 
 export async function getUser(id: string) {

@@ -40,9 +40,15 @@ export function createApp() {
     res.json({ maintenance: m, version: '0.1.0' });
   });
 
-  // Block write routes when maintenance is on (except admin).
+  // Block write routes when maintenance is on, EXCEPT admin and auth. Auth
+  // must stay open so admins can refresh tokens / log in to turn maintenance
+  // back off — otherwise a >15min (access-token lifetime) maintenance window
+  // becomes a lockout that only direct DB access can resolve.
   app.use(async (req, res, next) => {
-    if (req.method === 'GET' || req.path.startsWith('/api/admin') || req.path === '/health') return next();
+    if (req.method === 'GET'
+      || req.path.startsWith('/api/admin')
+      || req.path.startsWith('/api/auth')
+      || req.path === '/health') return next();
     const m = await getMaintenance();
     if (m?.enabled) return res.status(503).json({ error: 'MAINTENANCE', message: m.message ?? 'Service under maintenance' });
     next();
