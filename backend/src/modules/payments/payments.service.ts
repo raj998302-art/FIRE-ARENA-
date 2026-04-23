@@ -99,9 +99,13 @@ export async function verifyRazorpayPayment(userId: string, input: {
     throw badRequest('Signature verification failed');
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.payment.update({
-      where: { id: payment.id },
+  // Idempotency + credit must happen in a single transaction with a
+  // compare-and-set on `status`. Two concurrent verify requests would both
+  // read the payment as CREATED outside the transaction; inside, only one
+  // updateMany matches and gets to post the wallet credit / VIP activation.
+  const applied = await prisma.$transaction(async (tx) => {
+    const updated = await tx.payment.updateMany({
+      where: { id: payment.id, status: { not: PaymentStatus.APPROVED } },
       data: {
         status: PaymentStatus.APPROVED,
         rzpPaymentId: input.paymentId,
@@ -109,6 +113,7 @@ export async function verifyRazorpayPayment(userId: string, input: {
         approvedAt: new Date(),
       },
     });
+    if (updated.count !== 1) return false;
 
     if (payment.purpose === PaymentPurpose.VIP_SUBSCRIPTION && payment.referenceId) {
       await activateVipForUser(tx, userId, payment.referenceId);
@@ -119,7 +124,10 @@ export async function verifyRazorpayPayment(userId: string, input: {
         note: 'Razorpay deposit', tx,
       });
     }
+    return true;
   });
+
+  if (!applied) return { ok: true, alreadyApproved: true, purpose: payment.purpose };
 
   if (payment.purpose === PaymentPurpose.DEPOSIT) {
     await grantReferralRewardIfEligible(userId).catch(() => {});

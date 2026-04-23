@@ -61,7 +61,8 @@ fun WalletScreen(nav: NavHostController) {
                                 Text(t.createdAt.take(16).replace("T", " "), fontSize = 11.sp)
                             }
                             val prefix = when (t.type) {
-                                "DEPOSIT","REFERRAL_BONUS","TOURNAMENT_PRIZE","ADMIN_ADJUST","REFUND","UNLOCK" -> "+"
+                                "DEPOSIT","REFERRAL_BONUS","TOURNAMENT_PRIZE","ADMIN_ADJUST","REFUND","UNLOCK",
+                                "PROMO_REWARD","SPIN_REWARD","STREAK_BONUS" -> "+"
                                 else -> "-"
                             }
                             Text("$prefix${t.amountCoins}", fontWeight = FontWeight.Bold)

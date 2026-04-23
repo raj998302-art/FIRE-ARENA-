@@ -497,7 +497,7 @@ model PromoRedemption {
   promo      PromoCode @relation(fields: [promoId], references: [id], onDelete: Cascade)
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([promoId, userId])
+  @@index([promoId, userId])
   @@index([userId])
 }
 
