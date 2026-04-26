@@ -81,7 +81,7 @@ export default function RegisterPage() {
           </div>
           
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
               Password
             </label>
             <input
@@ -109,7 +109,7 @@ export default function RegisterPage() {
           </div>
           
           <div className="space-y-2">
-            <label htmlFor="lastName" className="block text-sm font-medium text-gray-300 mb-2>
+            <label htmlFor="lastName" className="block text-sm font-medium text-gray-300 mb-2">
               Last Name (Optional)
             </label>
             <input
@@ -122,7 +122,7 @@ export default function RegisterPage() {
           </div>
           
           <div className="space-y-2">
-            <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-300 mb-2>
+            <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-300 mb-2">
               Phone Number (Optional)
             </label>
             <input

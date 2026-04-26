@@ -1,7 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { db } = require('../models');
 const { AppError } = require('../utils/appError');
-
 require('dotenv').config();
 
 const protect = async (req, res, next) => {
@@ -20,6 +19,32 @@ const protect = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       
       // Get user from token
+      req.user = await db.User.findByPk(decoded.id, {
+        attributes: { exclude: ['passwordHash'] }
+      });
+      
+      if (!req.user) {
+        return next(new AppError('User not found', 401));
+      }
+      
+      if (!req.user.isActive) {
+        return next(new AppError('User account is deactivated', 401));
+      }
+      
+      if (req.user.isBanned) {
+        return next(new AppError('User account is banned', 401));
+      }
+      
+      next();
+    } catch (err) {
+      return next(new AppError('Not authorized, token failed', 401));
+    }
+  }
+  
+  // Check for token in cookies (for web)
+  if (req.cookies && req.cookies.token) {
+    try {
+      const decoded = jwt.verify(req.cookies.token, process.env.JWT_SECRET);
       req.user = await db.User.findByPk(decoded.id, {
         attributes: { exclude: ['passwordHash'] }
       });

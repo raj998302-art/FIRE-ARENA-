@@ -118,6 +118,9 @@ const User = sequelize.define('User', {
     },
     {
       fields: ['isActive', 'isBanned']
+    },
+    {
+      fields: ['failedLoginAttempts']
     }
   ]
 });
@@ -205,6 +208,12 @@ User.associate = function(models) {
   User.hasMany(models.Notification, {
     foreignKey: 'userId',
     as: 'notifications'
+  });
+  
+  // User has many refresh tokens
+  User.hasMany(models.RefreshToken, {
+    foreignKey: 'userId',
+    as: 'refreshTokens'
   });
   
   // User has many audit logs

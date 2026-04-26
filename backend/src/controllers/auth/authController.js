@@ -27,6 +27,19 @@ const hashToken = (token) => {
 exports.register = catchAsync(async (req, res, next) => {
   const { username, email, password, firstName, lastName, phoneNumber } = req.body;
   
+  // Validate input
+  if (!username || !email || !password) {
+    return next(new AppError('Please provide username, email, and password', 400));
+  }
+  
+  if (username.length < 3) {
+    return next(new AppError('Username must be at least 3 characters', 400));
+  }
+  
+  if (password.length < 8) {
+    return next(new AppError('Password must be at least 8 characters', 400));
+  }
+  
   // Check if user already exists
   const existingUser = await db.User.findOne({
     where: {
@@ -46,9 +59,11 @@ exports.register = catchAsync(async (req, res, next) => {
     username,
     email,
     passwordHash: password, // Will be hashed by hook
-    firstName,
-    lastName,
-    phoneNumber
+    firstName: firstName || '',
+    lastName: lastName || '',
+    phoneNumber: phoneNumber || '',
+    isEmailVerified: false,
+    isPhoneVerified: false
   });
   
   // Assign default role (REGULAR_USER)
@@ -65,8 +80,12 @@ exports.register = catchAsync(async (req, res, next) => {
   const refreshToken = generateRefreshToken();
   const hashedRefreshToken = hashToken(refreshToken);
   
-  // Store refresh token hash in user record (in practice, you'd have a separate table)
-  // For simplicity, we're adding it to the user model temporarily
+  // Store refresh token hash in database
+  await db.RefreshToken.create({
+    token: hashedRefreshToken,
+    userId: user.id,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+  });
   
   // Remove password from output
   const userResponse = user.toJSON();
@@ -95,6 +114,19 @@ exports.login = catchAsync(async (req, res, next) => {
   const user = await db.User.findOne({ where: { email } });
   
   if (!user || !(await user.validPassword(password))) {
+    // Increment failed login attempts
+    if (user) {
+      await user.increment('failedLoginAttempts');
+      
+      // Lock account after 5 failed attempts
+      if (user.failedLoginAttempts >= 5) {
+        await user.update({
+          lockUntil: new Date(Date.now() + 30 * 60 * 1000) // Lock for 30 minutes
+        });
+      }
+      await user.save();
+    }
+    
     return next(new AppError('Incorrect email or password', 401));
   }
   
@@ -113,7 +145,7 @@ exports.login = catchAsync(async (req, res, next) => {
     return next(new AppError('Account is banned', 401));
   }
   
-  // Reset failed login attempts
+  // Reset failed login attempts on successful login
   await user.update({
     failedLoginAttempts: 0,
     lockUntil: null,
@@ -125,7 +157,12 @@ exports.login = catchAsync(async (req, res, next) => {
   const refreshToken = generateRefreshToken();
   const hashedRefreshToken = hashToken(refreshToken);
   
-  // Store refresh token hash (in practice, use separate table)
+  // Store refresh token hash in database
+  await db.RefreshToken.create({
+    token: hashedRefreshToken,
+    userId: user.id,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+  });
   
   // Remove password from output
   const userResponse = user.toJSON();
@@ -143,8 +180,21 @@ exports.login = catchAsync(async (req, res, next) => {
 
 // Logout user
 exports.logout = catchAsync(async (req, res, next) => {
-  // In a real implementation, you would invalidate the token
-  // For now, we'll just return success
+  const { refreshToken } = req.body;
+  
+  // Remove refresh token from database
+  if (refreshToken) {
+    const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    await db.RefreshToken.destroy({
+      where: { token: hashedToken }
+    });
+  }
+  
+  // Also clear cookies if present
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production'
+  });
   
   res.status(200).json({
     status: 'success',
@@ -160,29 +210,47 @@ exports.refreshToken = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide refresh token', 400));
   }
   
-  // In a real implementation, you would:
-  // 1. Hash the refresh token
-  // 2. Look it up in your refresh token table
-  // 3. Verify it belongs to a user
-  // 4. Generate new access and refresh tokens
-  // 5. Invalidate the old refresh token
-  
-  // For now, we'll simulate this process
+  // Hash the token to check against database
   const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
   
-  // This is a simplified version - in practice, you'd check against stored hashes
-  // For demo purposes, we'll generate new tokens (not secure for production)
+  // Find valid refresh token
+  const tokenRecord = await db.RefreshToken.findOne({
+    where: {
+      token: hashedToken,
+      expiresAt: { [db.Sequelize.Op.gt]: new Date() }
+    },
+    include: [{
+      model: db.User,
+      attributes: { exclude: ['passwordHash'] }
+    }]
+  });
   
-  // Find user by some identifier (in practice, from refresh token table)
-  // This is a placeholder implementation
-  const user = req.user; // Assuming middleware has set this
-  
-  if (!user) {
-    return next(new AppError('Invalid refresh token', 401));
+  if (!tokenRecord) {
+    return next(new AppError('Invalid or expired refresh token', 401));
   }
   
+  const user = tokenRecord.User;
+  
+  // Remove old refresh token
+  await db.RefreshToken.destroy({
+    where: { id: tokenRecord.id }
+  });
+  
+  // Generate new tokens
   const newToken = generateToken(user.id);
   const newRefreshToken = generateRefreshToken();
+  const newHashedRefreshToken = hashToken(newRefreshToken);
+  
+  // Store new refresh token
+  await db.RefreshToken.create({
+    token: newHashedRefreshToken,
+    userId: user.id,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+  });
+  
+  // Remove password from output
+  const userResponse = user.toJSON();
+  delete userResponse.passwordHash;
   
   res.status(200).json({
     status: 'success',
@@ -200,8 +268,8 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
   // Check if user exists
   const user = await db.User.findOne({ where: { email } });
   
+  // Don't reveal whether email exists for security
   if (!user) {
-    // Don't reveal whether email exists for security
     return res.status(200).json({
       status: 'success',
       message: 'If the email exists in our system, you will receive a password reset link'
@@ -212,8 +280,11 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
   const resetToken = crypto.randomBytes(32).toString('hex');
   const hashedResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
   
-  // Store hashed token and expiry (in practice, add fields to user or create separate table)
-  // For now, we'll just simulate
+  // Store hashed token and expiry (1 hour)
+  await user.update({
+    passwordResetToken: hashedResetToken,
+    passwordResetExpires: new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+  });
   
   // In a real implementation, you would send email here
   console.log(`Password reset token for ${email}: ${resetToken}`);
@@ -232,16 +303,21 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide token and new password', 400));
   }
   
+  // Validate password length
+  if (password.length < 8) {
+    return next(new AppError('Password must be at least 8 characters', 400));
+  }
+  
   // Hash the token to compare with stored value
   const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
   
-  // Find user by reset token (in practice, query your reset token table)
-  // This is a simplified version
-  
-  // For demo, we'll just update the first user (NOT SECURE - for demonstration only)
-  // IN PRODUCTION: You would look up the user by the hashed token
-  
-  const user = await db.User.findOne({ where: { id: 1 } }); // PLACEHOLDER
+  // Find user by reset token
+  const user = await db.User.findOne({
+    where: {
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { [db.Sequelize.Op.gt]: new Date() }
+    }
+  });
   
   if (!user) {
     return next(new AppError('Invalid or expired token', 400));
@@ -249,10 +325,15 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
   
   // Update password
   user.passwordHash = password; // Will be hashed by hook
-  user.passwordResetExpires = undefined; // Clear expiry
-  user.passwordResetToken = undefined; // Clear token
+  user.passwordResetToken = null;
+  user.passwordResetExpires = null;
   
   await user.save();
+  
+  // Invalidate all existing refresh tokens for security
+  await db.RefreshToken.destroy({
+    where: { userId: user.id }
+  });
   
   res.status(200).json({
     status: 'success',

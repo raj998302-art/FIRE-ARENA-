@@ -2,7 +2,6 @@ const { db } = require('../models');
 const { AppError } = require('../utils/appError');
 const { catchAsync } = require('../utils/catchAsync');
 const crypto = require('crypto');
-const walletController = require('../wallet/walletController');
 
 require('dotenv').config();
 
@@ -121,16 +120,19 @@ exports.verifyPayment = catchAsync(async (req, res, next) => {
       { transaction }
     );
     
-    // Credit wallet (this would typically go through wallet service)
-    const user = await db.User.findByPk(userId, { transaction });
+    // Credit wallet through wallet service (ensures proper locking)
+    const user = await db.User.findByPk(userId, { 
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
     
     if (!user) {
       await transaction.rollback();
       return next(new AppError('User not found', 404));
     }
     
-    const balanceBefore = user.walletBalance;
-    const balanceAfter = user.walletBalance + parseFloat(payment.amount);
+    const balanceBefore = user.walletBalance || 0;
+    const balanceAfter = balanceBefore + parseFloat(payment.amount);
     
     // Update user balance
     await user.update(

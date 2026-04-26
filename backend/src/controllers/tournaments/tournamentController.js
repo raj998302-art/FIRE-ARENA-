@@ -40,6 +40,14 @@ exports.createTournament = catchAsync(async (req, res, next) => {
     return next(new AppError('Entry fee cannot be negative', 400));
   }
   
+  // Validate prize distribution if provided
+  if (prizeDistribution) {
+    const totalPercentage = Object.values(prizeDistribution).reduce((sum, val) => sum + val, 0);
+    if (totalPercentage !== 100) {
+      return next(new AppError('Prize distribution must total 100%', 400));
+    }
+  }
+  
   // Start transaction
   const transaction = await db.sequelize.transaction();
   
@@ -130,22 +138,22 @@ exports.getTournament = catchAsync(async (req, res, next) => {
         prizePool: tournament.prizePool,
         prizeDistribution: tournament.prizeDistribution,
         status: tournament.status,
-        startTime: tournament.startTime,
-        endTime: tournament.endTime,
-        registrationDeadline: tournament.registrationDeadline,
-        roomId: tournament.roomId,
-        roomPassword: tournament.roomPassword,
-        isVipOnly: tournament.isVipOnly,
-        minVipLevel: tournament.minVipLevel,
-        autoStartWhenFull: tournament.autoStartWhenFull,
-        createdAt: tournament.createdAt,
-        updatedAt: tournament.updatedAt,
-        createdBy: {
-          id: tournament.creator.id,
-          username: tournament.creator.username,
-          firstName: tournament.creator.firstName,
-          lastName: tournament.creator.lastName
-        }
+          startTime: tournament.startTime,
+          endTime: tournament.endTime,
+          registrationDeadline: tournament.registrationDeadline,
+          roomId: tournament.roomId,
+          roomPassword: tournament.roomPassword,
+          isVipOnly: tournament.isVipOnly,
+          minVipLevel: tournament.minVipLevel,
+          autoStartWhenFull: tournament.autoStartWhenFull,
+          createdAt: tournament.createdAt,
+          updatedAt: tournament.updatedAt,
+          createdBy: {
+            id: tournament.creator.id,
+            username: tournament.creator.username,
+            firstName: tournament.creator.firstName,
+            lastName: tournament.creator.lastName
+          }
       }
     }
   });
@@ -226,6 +234,123 @@ exports.getTournaments = catchAsync(async (req, res, next) => {
       }
     }
   });
+});
+
+// Update tournament (FIXED: Was missing)
+exports.updateTournament = catchAsync(async (req, res, next) => {
+  const { tournamentId } = req.params;
+  const {
+    title, description, gameMode, maxPlayers, entryFee, 
+    prizeDistribution, startTime, endTime, registrationDeadline,
+    isVipOnly, minVipLevel, autoStartWhenFull
+  } = req.body;
+  const userId = req.user.id;
+  
+  // Start transaction
+  const transaction = await db.sequelize.transaction();
+  
+  try {
+    // Get tournament with lock to prevent race conditions
+    const tournament = await db.Tournament.findByPk(tournamentId, { 
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    
+    if (!tournament) {
+      await transaction.rollback();
+      return next(new AppError('Tournament not found', 404));
+    }
+    
+    // Check if tournament can be edited
+    if (tournament.status === 'completed' || tournament.status === 'cancelled') {
+      await transaction.rollback();
+      return next(new AppError('Cannot edit completed or cancelled tournament', 400));
+    }
+    
+    // Validate game mode if provided
+    if (gameMode && !['solo', 'duo', 'squad'].includes(gameMode)) {
+      await transaction.rollback();
+      return next(new AppError('Invalid game mode', 400));
+    }
+    
+    // Validate max players if provided
+    if (maxPlayers) {
+      const maxPlayersMap = {
+        solo: 48,
+        duo: 24, // 24 teams = 48 players
+        squad: 12 // 12 teams = 48 players
+      };
+      
+      if (maxPlayers > maxPlayersMap[gameMode || tournament.gameMode]) {
+        await transaction.rollback();
+        return next(new AppError(`Maximum players for ${gameMode || tournament.gameMode} mode is ${maxPlayersMap[gameMode || tournament.gameMode]}`, 400));
+      }
+    }
+    
+    // Validate entry fee if provided
+    if (entryFee !== undefined && entryFee !== null) {
+      const entryFeeNum = parseFloat(entryFee);
+      if (isNaN(entryFeeNum) || entryFeeNum < 0) {
+        await transaction.rollback();
+        return next(new AppError('Entry fee cannot be negative', 400));
+      }
+    }
+    
+    // Validate prize distribution if provided
+    if (prizeDistribution) {
+      const totalPercentage = Object.values(prizeDistribution).reduce((sum, val) => sum + val, 0);
+      if (totalPercentage !== 100) {
+        await transaction.rollback();
+        return next(new AppError('Prize distribution must total 100%', 400));
+      }
+    }
+    
+    // Build update object
+    const updateData = {
+      updatedBy: userId,
+      updatedAt: new Date()
+    };
+    
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (gameMode !== undefined) updateData.gameMode = gameMode;
+    if (maxPlayers !== undefined) updateData.maxPlayers = maxPlayers;
+    if (entryFee !== undefined && entryFee !== null) updateData.entryFee = parseFloat(entryFee);
+    if (prizeDistribution !== undefined) updateData.prizeDistribution = prizeDistribution;
+    if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
+    if (endTime !== undefined) updateData.endTime = endTime ? new Date(endTime) : null;
+    if (registrationDeadline !== undefined) updateData.registrationDeadline = registrationDeadline ? new Date(registrationDeadline) : null;
+    if (isVipOnly !== undefined) updateData.isVipOnly = !!isVipOnly;
+    if (minVipLevel !== undefined) updateData.minVipLevel = minVipLevel;
+    if (autoStartWhenFull !== undefined) updateData.autoStartWhenFull = !!autoStartWhenFull;
+    
+    // Update tournament
+    await tournament.update(updateData, { transaction });
+    
+    await transaction.commit();
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        message: 'Tournament updated successfully',
+        tournament: {
+          id: tournament.id,
+          title: tournament.title,
+          description: tournament.description,
+          gameMode: tournament.gameMode,
+          maxPlayers: tournament.maxPlayers,
+          entryFee: tournament.entryFee,
+          prizePool: tournament.prizePool,
+          prizeDistribution: tournament.prizeDistribution,
+          status: tournament.status,
+          updatedAt: tournament.updatedAt
+        }
+      }
+    });
+  } catch (error) {
+    await transaction.rollback();
+    return next(new AppError('Failed to update tournament', 500));
+  }
 });
 
 // Join tournament
@@ -429,7 +554,7 @@ exports.leaveTournament = catchAsync(async (req, res, next) => {
         message: 'Successfully left tournament',
         refundedAmount: tournament.entryFee
       }
-    });
+    );
   } catch (error) {
     await transaction.rollback();
     return next(new AppError('Failed to leave tournament', 500));
@@ -499,7 +624,7 @@ exports.startTournament = catchAsync(async (req, res, next) => {
           startTime: tournament.startTime
         }
       }
-    });
+    );
   } catch (error) {
     await transaction.rollback();
     return next(new AppError('Failed to start tournament', 500));
@@ -751,7 +876,7 @@ exports.cancelTournament = catchAsync(async (req, res, next) => {
         },
         entryFee: tournament.entryFee
       }
-    });
+    );
   } catch (error) {
     await transaction.rollback();
     return next(new AppError('Failed to cancel tournament', 500));

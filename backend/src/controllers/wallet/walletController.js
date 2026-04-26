@@ -12,9 +12,9 @@ exports.getBalance = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     data: {
-      walletBalance: user.walletBalance,
-      lockedBalance: user.lockedBalance,
-      availableBalance: user.walletBalance - user.lockedBalance
+      walletBalance: user.walletBalance || 0,
+      lockedBalance: user.lockedBalance || 0,
+      availableBalance: (user.walletBalance || 0) - (user.lockedBalance || 0)
     }
   });
 });
@@ -33,16 +33,19 @@ exports.addFunds = catchAsync(async (req, res, next) => {
   const transaction = await db.sequelize.transaction();
   
   try {
-    // Get current balance
-    const user = await db.User.findByPk(userId, { transaction });
+    // Get current balance with lock to prevent race conditions
+    const user = await db.User.findByPk(userId, { 
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
     
     if (!user) {
       await transaction.rollback();
       return next(new AppError('User not found', 404));
     }
     
-    const balanceBefore = user.walletBalance;
-    const balanceAfter = user.walletBalance + parseFloat(amount);
+    const balanceBefore = user.walletBalance || 0;
+    const balanceAfter = balanceBefore + parseFloat(amount);
     
     // Update user balance
     await user.update(
@@ -62,7 +65,8 @@ exports.addFunds = catchAsync(async (req, res, next) => {
         referenceType,
         balanceBefore,
         balanceAfter,
-        processedBy: userId // Self-processed for internal operations
+        isLocked: false,
+        processedBy: userId
       },
       { transaction }
     );
@@ -73,7 +77,8 @@ exports.addFunds = catchAsync(async (req, res, next) => {
       status: 'success',
       data: {
         transaction: walletTransaction,
-        newBalance: balanceAfter
+        newBalance: balanceAfter,
+        message: 'Funds added successfully'
       }
     });
   } catch (error) {
@@ -96,8 +101,11 @@ exports.deductFunds = catchAsync(async (req, res, next) => {
   const transaction = await db.sequelize.transaction();
   
   try {
-    // Get current balance
-    const user = await db.User.findByPk(userId, { transaction });
+    // Get current balance with lock to prevent race conditions
+    const user = await db.User.findByPk(userId, { 
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
     
     if (!user) {
       await transaction.rollback();
@@ -105,14 +113,14 @@ exports.deductFunds = catchAsync(async (req, res, next) => {
     }
     
     // Check sufficient balance
-    const availableBalance = user.walletBalance - user.lockedBalance;
+    const availableBalance = (user.walletBalance || 0) - (user.lockedBalance || 0);
     if (availableBalance < amount) {
       await transaction.rollback();
       return next(new AppError('Insufficient balance', 400));
     }
     
-    const balanceBefore = user.walletBalance;
-    const balanceAfter = user.walletBalance - parseFloat(amount);
+    const balanceBefore = user.walletBalance || 0;
+    const balanceAfter = balanceBefore - parseFloat(amount);
     
     // Update user balance
     await user.update(
@@ -132,7 +140,8 @@ exports.deductFunds = catchAsync(async (req, res, next) => {
         referenceType,
         balanceBefore,
         balanceAfter,
-        processedBy: userId // Self-processed for internal operations
+        isLocked: false,
+        processedBy: userId
       },
       { transaction }
     );
@@ -143,9 +152,10 @@ exports.deductFunds = catchAsync(async (req, res, next) => {
       status: 'success',
       data: {
         transaction: walletTransaction,
-        newBalance: balanceAfter
+        newBalance: balanceAfter,
+        message: 'Funds deducted successfully'
       }
-    });
+    );
   } catch (error) {
     await transaction.rollback();
     return next(new AppError('Failed to deduct funds', 500));
@@ -166,8 +176,11 @@ exports.lockFunds = catchAsync(async (req, res, next) => {
   const transaction = await db.sequelize.transaction();
   
   try {
-    // Get current balance
-    const user = await db.User.findByPk(userId, { transaction });
+    // Get current balance with lock to prevent race conditions
+    const user = await db.User.findByPk(userId, { 
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
     
     if (!user) {
       await transaction.rollback();
@@ -175,16 +188,16 @@ exports.lockFunds = catchAsync(async (req, res, next) => {
     }
     
     // Check sufficient available balance
-    const availableBalance = user.walletBalance - user.lockedBalance;
+    const availableBalance = (user.walletBalance || 0) - (user.lockedBalance || 0);
     if (availableBalance < amount) {
       await transaction.rollback();
       return next(new AppError('Insufficient available balance', 400));
     }
     
-    const balanceBefore = user.walletBalance;
-    const lockedBefore = user.lockedBalance;
-    const balanceAfter = user.walletBalance; // Wallet balance doesn't change
-    const lockedAfter = user.lockedBalance + parseFloat(amount); // Locked balance increases
+    const balanceBefore = user.walletBalance || 0;
+    const lockedBefore = user.lockedBalance || 0;
+    const balanceAfter = balanceBefore; // Wallet balance doesn't change
+    const lockedAfter = lockedBefore + parseFloat(amount); // Locked balance increases
     
     // Update user balances
     await user.update(
@@ -221,9 +234,10 @@ exports.lockFunds = catchAsync(async (req, res, next) => {
         transaction: walletTransaction,
         walletBalance: balanceAfter,
         lockedBalance: lockedAfter,
-        availableBalance: balanceAfter - lockedAfter
+        availableBalance: balanceAfter - lockedAfter,
+        message: 'Funds locked successfully'
       }
-    });
+    );
   } catch (error) {
     await transaction.rollback();
     return next(new AppError('Failed to lock funds', 500));
@@ -244,8 +258,11 @@ exports.unlockFunds = catchAsync(async (req, res, next) => {
   const transaction = await db.sequelize.transaction();
   
   try {
-    // Get current balance
-    const user = await db.User.findByPk(userId, { transaction });
+    // Get current balance with lock to prevent race conditions
+    const user = await db.User.findByPk(userId, { 
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
     
     if (!user) {
       await transaction.rollback();
@@ -253,15 +270,15 @@ exports.unlockFunds = catchAsync(async (req, res, next) => {
     }
     
     // Check sufficient locked balance
-    if (user.lockedBalance < amount) {
+    if ((user.lockedBalance || 0) < amount) {
       await transaction.rollback();
       return next(new AppError('Insufficient locked balance', 400));
     }
     
-    const balanceBefore = user.walletBalance;
-    const lockedBefore = user.lockedBalance;
-    const balanceAfter = user.walletBalance; // Wallet balance doesn't change
-    const lockedAfter = user.lockedBalance - parseFloat(amount); // Locked balance decreases
+    const balanceBefore = user.walletBalance || 0;
+    const lockedBefore = user.lockedBalance || 0;
+    const balanceAfter = balanceBefore; // Wallet balance doesn't change
+    const lockedAfter = lockedBefore - parseFloat(amount); // Locked balance decreases
     
     // Update user balances
     await user.update(
@@ -298,9 +315,10 @@ exports.unlockFunds = catchAsync(async (req, res, next) => {
         transaction: walletTransaction,
         walletBalance: balanceBefore,
         lockedBalance: lockedAfter,
-        availableBalance: balanceBefore - lockedAfter
+        availableBalance: balanceBefore - lockedAfter,
+        message: 'Funds unlocked successfully'
       }
-    });
+    );
   } catch (error) {
     await transaction.rollback();
     return next(new AppError('Failed to unlock funds', 500));
@@ -336,8 +354,8 @@ exports.getTransactionHistory = catchAsync(async (req, res, next) => {
       pagination: {
         total: count,
         page: pageNum,
-        limit: limitNum,
-        pages: Math.ceil(count / limitNum)
+          limit: limitNum,
+          pages: Math.ceil(count / limitNum)
       }
     }
   });

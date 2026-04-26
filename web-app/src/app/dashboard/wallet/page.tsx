@@ -1,3 +1,5 @@
+'use client';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { walletAPI } from '@/lib/api';
 import { useState, useEffect } from 'react';
