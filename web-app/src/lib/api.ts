@@ -79,50 +79,50 @@ export const authAPI = {
 
 export const walletAPI = {
   getBalance: () => api.get('/wallet/balance'),
-  
-  getTransactions: (params?: { 
-    page?: number; 
-    limit?: number; 
-    category?: string; 
-    type?: string; 
-  }) => 
+
+  getTransactionHistory: (params?: {
+    page?: number;
+    limit?: number;
+    category?: string;
+    type?: string;
+  }) =>
     api.get('/wallet/transactions', { params }),
-  
+
   // Internal use only - would be called by payment service after verification
-  addFunds: (data: { 
-    amount: number; 
-    category: string; 
-    description?: string; 
-    referenceId?: string; 
-    referenceType?: string; 
-  }) => 
+  addFunds: (data: {
+    amount: number;
+    category: string;
+    description?: string;
+    referenceId?: string;
+    referenceType?: string;
+  }) =>
     api.post('/wallet/add-funds', data),
-  
-  deductFunds: (data: { 
-    amount: number; 
-    category: string; 
-    description?: string; 
-    referenceId?: string; 
-    referenceType?: string; 
-  }) => 
+
+  deductFunds: (data: {
+    amount: number;
+    category: string;
+    description?: string;
+    referenceId?: string;
+    referenceType?: string;
+  }) =>
     api.post('/wallet/deduct-funds', data),
-  
-  lockFunds: (data: { 
-    amount: number; 
-    category: string; 
-    description?: string; 
-    referenceId?: string; 
-    referenceType?: string; 
-  }) => 
+
+  lockFunds: (data: {
+    amount: number;
+    category: string;
+    description?: string;
+    referenceId?: string;
+    referenceType?: string;
+  }) =>
     api.post('/wallet/lock-funds', data),
-  
-  unlockFunds: (data: { 
-    amount: number; 
-    category: string; 
-    description?: string; 
-    referenceId?: string; 
-    referenceType?: string; 
-  }) => 
+
+  unlockFunds: (data: {
+    amount: number;
+    category: string;
+    description?: string;
+    referenceId?: string;
+    referenceType?: string;
+  }) =>
     api.post('/wallet/unlock-funds', data),
 };
 

@@ -19,7 +19,7 @@ export default function WalletPage() {
         setBalance(balanceResponse.data.walletBalance);
         
         // Get transactions
-        const transactionsResponse = await walletAPI.getTransactions();
+        const transactionsResponse = await walletAPI.getTransactionHistory();
         setTransactions(transactionsResponse.data.transactions);
       } catch (error) {
         console.error('Failed to load wallet data:', error);
