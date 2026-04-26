@@ -8,6 +8,8 @@ require('dotenv').config();
 const connectedUsers = new Map();
 // Store room members
 const roomMembers = new Map();
+// Store typing timers to auto-clear after 3 seconds
+const typingTimers = new Map();
 
 const initializeWebSocket = (server) => {
   const io = new Server(server, {
@@ -46,6 +48,10 @@ const initializeWebSocket = (server) => {
       
       // Attach user to socket
       socket.user = user;
+
+      // Join user-specific room for personal notifications
+      socket.join(`user_${userId}`);
+
       next();
     } catch (err) {
       return next(new AppError('Authentication failed', 401));
@@ -160,18 +166,57 @@ const initializeWebSocket = (server) => {
     socket.on('mark_as_read', async (messageId) => {
       try {
         const message = await db.ChatMessage.findByPk(messageId);
-        
+
         if (message && message.recipientId === userId) {
           await message.update({
             isRead: true,
             readAt: new Date()
           });
-          
+
           // Notify sender
           socket.to(`user_${message.senderId}`).emit('message_read', {
             messageId
           });
+
+          // Emit to all connected clients of this user
+          io.to(`user_${userId}`).emit('message_read_sync', {
+            messageId
+          });
         }
+      } catch (error) {
+        // Silently ignore read errors
+      }
+    });
+
+    // Handle marking multiple messages as read
+    socket.on('mark_messages_as_read', async (messageIds) => {
+      try {
+        if (!Array.isArray(messageIds) || messageIds.length === 0) return;
+
+        const messages = await db.ChatMessage.findAll({
+          where: {
+            id: messageIds,
+            recipientId: userId,
+            isRead: false
+          }
+        });
+
+        for (const message of messages) {
+          await message.update({
+            isRead: true,
+            readAt: new Date()
+          });
+
+          // Notify sender
+          socket.to(`user_${message.senderId}`).emit('message_read', {
+            messageId: message.id
+          });
+        }
+
+        // Emit to all connected clients of this user
+        io.to(`user_${userId}`).emit('messages_read_sync', {
+          messageIds
+        });
       } catch (error) {
         // Silently ignore read errors
       }
@@ -180,6 +225,28 @@ const initializeWebSocket = (server) => {
     // Handle typing indicator
     socket.on('typing', (data) => {
       const { roomId, isTyping } = data;
+
+      // Clear existing timer for this user in this room
+      const timerKey = `${userId}-${roomId}`;
+      if (typingTimers.has(timerKey)) {
+        clearTimeout(typingTimers.get(timerKey));
+      }
+
+      if (isTyping) {
+        // Set new timer to clear typing indicator after 3 seconds
+        const timer = setTimeout(() => {
+          socket.to(roomId).emit('user_typing', {
+            userId,
+            username,
+            roomId,
+            isTyping: false
+          });
+          typingTimers.delete(timerKey);
+        }, 3000);
+        typingTimers.set(timerKey, timer);
+      }
+
+      // Emit typing status immediately
       socket.to(roomId).emit('user_typing', {
         userId,
         username,
@@ -187,20 +254,28 @@ const initializeWebSocket = (server) => {
         isTyping
       });
     });
-    
-    // Handle disconnection
+
+    // Clear typing timers on disconnect
     socket.on('disconnect', (reason) => {
+      // Clear all typing timers for this user
+      typingTimers.forEach((timer, key) => {
+        if (key.startsWith(`${userId}-`)) {
+          clearTimeout(timer);
+          typingTimers.delete(key);
+        }
+      });
+
       // Remove from connected users
       connectedUsers.delete(userId);
-      
-      // Remove from all rooms
+
+      // Remove from all rooms and notify
       roomMembers.forEach((members, roomId) => {
         if (members.has(userId)) {
           members.delete(userId);
           if (members.size === 0) {
             roomMembers.delete(roomId);
           }
-          
+
           // Notify room members
           socket.to(roomId).emit('user_left_room', {
             userId,
@@ -209,12 +284,47 @@ const initializeWebSocket = (server) => {
           });
         }
       });
-      
+
       // Notify others that user is offline
       socket.to('global_chat').emit('user_offline', {
         userId,
         username
       });
+
+      // Leave user-specific room
+      socket.leave(`user_${userId}`);
+    });
+    
+    // Handle disconnection
+    socket.on('disconnect', (reason) => {
+      // Remove from connected users
+      connectedUsers.delete(userId);
+
+      // Remove from all rooms and notify
+      roomMembers.forEach((members, roomId) => {
+        if (members.has(userId)) {
+          members.delete(userId);
+          if (members.size === 0) {
+            roomMembers.delete(roomId);
+          }
+
+          // Notify room members
+          socket.to(roomId).emit('user_left_room', {
+            userId,
+            username,
+            roomId
+          });
+        }
+      });
+
+      // Notify others that user is offline
+      socket.to('global_chat').emit('user_offline', {
+        userId,
+        username
+      });
+
+      // Leave user-specific room
+      socket.leave(`user_${userId}`);
     });
   });
   

@@ -178,30 +178,42 @@ export const tournamentAPI = {
 };
 
 export const chatAPI = {
-  getChatHistory: (conversationId: string, params?: { 
-    page?: number; 
-    limit?: number; 
-  }) => 
-    api.get(`/chat/${conversationId}/history`, { params }),
-  
-  sendMessage: (data: { 
-    conversationId: string; 
-    recipientId?: string; 
-    message: string; 
-    messageType?: 'text' | 'image' | 'file' | 'system';
+  getHistory: (conversationId: string, params: {
+    page?: number;
+    limit?: number
+  } = {}) =>
+    axios.get(`${API_BASE_URL}/chat/${conversationId}/history`, { params }),
+
+  sendMessage: (data: {
+    conversationId: string;
+    recipientId?: string;
+    message: string;
+    messageType?: string;
     fileUrl?: string;
     fileName?: string;
-    replyToId?: string;
-  }) => 
-    api.post('/chat/send', data),
-  
-  getUnreadCount: () => api.get('/chat/unread-count'),
-  
-  markAsRead: (messageIds: string[]) => 
-    api.post('/chat/mark-as-read', { messageIds }),
-  
-  deleteMessage: (messageId: string) => 
-    api.delete(`/chat/${messageId}`),
+    replyToId?: string
+  }) =>
+    axios.post(`${API_BASE_URL}/chat/send`, data),
+
+  getUnreadCount: () =>
+    axios.get(`${API_BASE_URL}/chat/unread-count`),
+
+  markAsRead: (messageIds: string[]) =>
+    axios.post(`${API_BASE_URL}/chat/mark-as-read`, { messageIds }),
+
+  deleteMessage: (messageId: string) =>
+    axios.delete(`${API_BASE_URL}/chat/${messageId}`),
+
+  getMessageById: (messageId: string) =>
+    axios.get(`${API_BASE_URL}/chat/${messageId}`),
+
+  uploadFile: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return axios.post(`${API_BASE_URL}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
 };
 
 export const vipAPI = {

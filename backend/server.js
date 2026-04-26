@@ -43,6 +43,7 @@ app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/vip', require('./src/routes/vip'));
 app.use('/api/team', require('./src/routes/team'));
 app.use('/api/notifications', require('./src/routes/notifications'));
+app.use('/api/upload', require('./src/routes/upload'));
 
 // 404 handler
 app.use('*', (req, res) => {
