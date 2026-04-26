@@ -31,7 +31,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions {
+        jvmTarget = "17"
+        // Many Compose Material 3 APIs (Scaffold's TopAppBar host, etc) are still
+        // marked experimental upstream. Opt in globally rather than per-file.
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
+            // Some transitive deps (notably onesignal-core) ship Kotlin 2.x metadata
+            // but our compiler is 1.9.x; tolerate the version mismatch.
+            "-Xskip-metadata-version-check",
+        )
+    }
 
     buildTypes {
         release {
@@ -45,6 +57,18 @@ android {
             "META-INF/DEPENDENCIES",
             "META-INF/LICENSE*"
         )
+    }
+}
+
+configurations.all {
+    // Some transitive deps (notably com.google.android.material 1.12.0) drag
+    // in kotlin-stdlib 2.x, but the project's Kotlin compiler is 1.9.x. Pin
+    // stdlib to a 1.9-compatible version so the compiler can read its metadata.
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24")
+        force("org.jetbrains.kotlin:kotlin-stdlib-common:1.9.24")
     }
 }
 
@@ -62,6 +86,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    // Material Components Android (provides the Theme.Material3.* XML themes
+    // referenced by AndroidManifest's android:theme).
+    implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.navigation:navigation-compose:2.8.2")
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
