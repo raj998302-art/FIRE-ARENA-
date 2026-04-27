@@ -218,19 +218,19 @@ export const chatAPI = {
 
 export const vipAPI = {
   getVipStatus: () => api.get('/vip/status'),
-  
-  purchaseVip: (data: { 
+
+  purchaseVip: (data: {
     plan: 'weekly' | 'monthly';
     amount: number;
-  }) => 
+  }) =>
     api.post('/vip/purchase', data),
-  
+
   cancelVip: () => api.post('/vip/cancel'),
-  
-  getVipTournaments: (params?: { 
-    page?: number; 
-    limit?: number; 
-  }) => 
+
+  getVipTournaments: (params?: {
+    page?: number;
+    limit?: number;
+  }) =>
     api.get('/vip/tournaments', { params }),
 };
 
